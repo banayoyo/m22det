@@ -52,6 +52,8 @@ def main(args):
     plt.subplot(122);plt.imshow(img2)  # expects true color
     plt.show()
     
+    tf.reset_default_graph()
+    
     det = Detector(
         model_path=args.model_path, 
         input_size=args.input_size, 

@@ -61,7 +61,7 @@ class M2Det:
             all_reg = []
             with tf.variable_scope('prediction'):
                 for i, feature in enumerate(features):
-                    print(i+1, feature.shape)
+                    print('predict[',i+1,'] shape=', feature.shape)
                     cls = conv2d_layer(feature, self.num_priors * self.num_classes, 3, 1, use_bias=True)
                     cls = batch_norm(cls, is_training) # activation function is identity
                     cls = flatten_layer(cls)
