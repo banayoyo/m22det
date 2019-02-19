@@ -1,4 +1,6 @@
 # :construction: Work in Progress :construction:
+An derived from
+[https://github.com/tadax/m2det]
 
 # M2Det
 
@@ -40,6 +42,8 @@ To be released before long.
 
 ```
 $ python demo.py --inputs <image_path> --model_path <model_path>
+
+debugfile('C:/users/admin/desktop/git_repo/tf/m2det/demo.py', args='--inputs=../data_file/images/person.jpg --input_size=512',wdir='C:/users/admin/desktop/git_repo/tf/m2det')
 ```
 
 ### How to Train

@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import argparse
+import matplotlib.pyplot as plt
 
 from utils.detector import Detector
 from mscoco import table
@@ -42,6 +43,15 @@ def get_classes(index):
     return classes[index], tuple(colors[index].tolist())
 
 def main(args):
+    
+    img =cv2.imread(args.inputs)
+    b, g, r = cv2.split(img)
+    img2 = cv2.merge([r,g,b])
+    # img2 = img[:,:,::-1]    this can be faster
+    plt.subplot(121);plt.imshow(img)  # expects dis-sorted color
+    plt.subplot(122);plt.imshow(img2)  # expects true color
+    plt.show()
+    
     det = Detector(
         model_path=args.model_path, 
         input_size=args.input_size, 
@@ -75,10 +85,11 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--inputs', required=True)
-    parser.add_argument('--model_path', default='weights/variables')
-    parser.add_argument('--input_size', type=int, default=320)
+    parser.add_argument('--model_path', default='C:/users/admin/desktop/git_repo/tf/data_file/darknet/')
+    parser.add_argument('--input_size', type=int, required=True)
     parser.add_argument('--num_classes', type=int, default=80)
     parser.add_argument('--threshold', type=float, default=0.60)
     parser.add_argument('--gpu', type=str, default='-1')
     os.environ['CUDA_VISIBLE_DEVICES'] = parser.parse_args().gpu
+    
     main(parser.parse_args())
