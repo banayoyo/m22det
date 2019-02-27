@@ -16,7 +16,7 @@ class Detector:
         self.input_size = input_size
         self.num_classes = num_classes
         self.threshold = threshold
-        self.priors = generate_priors()
+        self.priors = generate_priors() #generate anchor box
         self.build()
 
     def build(self):

@@ -5,8 +5,8 @@ from utils.layer import *
 class M2Det:
     def __init__(self, inputs, is_training, num_classes):
         self.num_classes = num_classes + 1 # for background class
-        self.levels = 8
-        self.scales = 6
+        self.levels = 8  #8 TUMs
+        self.scales = 6  #6 scales
         self.num_priors = 9
         self.build(inputs, is_training)
 
@@ -22,18 +22,23 @@ class M2Det:
             feature2 = net
 
         with tf.variable_scope('M2Det'):
+            #base feature is output of FFMv1
             with tf.variable_scope('FFMv1'):
                 feature1 = conv2d_layer(feature1, filters=256, kernel_size=3, strides=1)
                 feature1 = tf.nn.relu(batch_norm(feature1, is_training))
                 feature2 = conv2d_layer(feature2, filters=512, kernel_size=1, strides=1)
                 feature2 = tf.nn.relu(batch_norm(feature2, is_training))
+                #upsample
                 feature2 = tf.image.resize_images(feature2, tf.shape(feature1)[1:3], 
                                                   method=tf.image.ResizeMethod.BILINEAR)
                 base_feature = tf.concat([feature1, feature2], axis=3)
 
+            #FFMv_x, 1~7 and TUM, 0~7
             outs = []
             for i in range(self.levels):
+                #FFMv_x
                 if i == 0:
+                    #????????????not found this convolution in paper
                     net = conv2d_layer(base_feature, filters=256, kernel_size=1, strides=1)
                     net = tf.nn.relu(batch_norm(net, is_training))
                 else:
@@ -41,6 +46,8 @@ class M2Det:
                         net = conv2d_layer(base_feature, filters=128, kernel_size=1, strides=1)
                         net = tf.nn.relu(batch_norm(net, is_training))
                         net = tf.concat([net, out[-1]], axis=3)
+
+                #TUM
                 with tf.variable_scope('TUM{}'.format(i+1)):
                     out = tum(net, is_training, self.scales)
                 outs.append(out)

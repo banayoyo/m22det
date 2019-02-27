@@ -2,6 +2,13 @@
 An derived from
 [https://github.com/tadax/m2det]
 
+From the author' github, some keys:
+1/for 320 and 512, TUM all use 5 down_sample, total 6 feature map
+2/ResNet-101, stride of Res4 is from 2 to 1.Then, the output of conv1, pool1, Res2, Res3, Res4, Res5 is:1/2, 1/4, 1/4, 1/8, 1/8 and 1/16
+3/when training, be care of batch size<128, init_lr=0.005~0.01.
+4/zealota use dilated resnet, but this may be slower.
+5/us SE attention module
+
 # M2Det
 
 An implementation of
