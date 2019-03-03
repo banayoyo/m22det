@@ -1,85 +1,98 @@
-import numpy as np
-import tensorflow as tf
-import logging
+from __future__ import print_function
 import os
+import warnings
+warnings.filterwarnings('ignore')
+
+import time
+import torch
+import shutil
 import argparse
+from m2det import build_net
+import torch.utils.data as data
+import torch.backends.cudnn as cudnn
+from layers.functions import PriorBox
+from data import detection_collate
+from configs.CC import Config
+from utils.core import *
 
-from m2det import M2Det
-from utils.data import Data
-from utils.loss import calc_loss
+parser = argparse.ArgumentParser(description='M2Det Training')
+parser.add_argument('-c', '--config', default='configs/m2det320_vgg16.py')
+parser.add_argument('-d', '--dataset', default='COCO', help='VOC or COCO dataset')
+parser.add_argument('--ngpu', default=1, type=int, help='gpus')
+parser.add_argument('--resume_net', default=None, help='resume net for retraining')
+parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
+parser.add_argument('-t', '--tensorboard', type=bool, default=False, help='Use tensorborad to show the Loss Graph')
+args = parser.parse_args()
 
-def main(args):
-    logger = logging.getLogger()
-    hdlr = logging.FileHandler(args.log_path)
-    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(threadName)-10s] %(message)s')
-    hdlr.setFormatter(formatter)
-    logger.addHandler(hdlr)
-    logger.addHandler(logging.StreamHandler())
-    logger.setLevel(logging.INFO)
-    
-    databox = Data(args.image_dir, args.label_dir, args.num_classes, args.input_size)
-    databox.start()
-    dataset_size = databox.size
-    logger.info('Dataset size: {}'.format(dataset_size))
+print_info('----------------------------------------------------------------------\n'
+           '|                       M2Det Training Program                       |\n'
+           '----------------------------------------------------------------------',['yellow','bold'])
 
-    if args.input_size == 320:
-        # (40x40+20x20+10x10+5x5+3x3+1x1)x9=19215
-        num_boxes = 19215
-    elif args.input_size == 640:
-        # (80x80+40x40+20x20+10x10+5x5+3x3)x9=76806
-        num_boxes = 76806
+logger = set_logger(args.tensorboard)
+global cfg
+cfg = Config.fromfile(args.config)
+net = build_net('train', 
+                size = cfg.model.input_size, # Only 320, 512, 704 and 800 are supported
+                config = cfg.model.m2det_config)
+init_net(net, cfg, args.resume_net) # init the network with pretrained weights or resumed weights
 
-    '''
-    y_true_size = num_classes + 6
-    * 4 => bbox coordinates (x1, y1, x2, y2);
-    * num_classes + 1 => including a background class;
-    * 1 => denotes if the prior box was matched to some gt boxes or not;
-    '''
-    y_true_size = args.num_classes + 6
-    inputs = tf.placeholder(tf.float32, [None, args.input_size, args.input_size, 3])
-    y_true = tf.placeholder(tf.float32, [None, num_boxes, y_true_size])
-    is_training = tf.constant(True)
-    net = M2Det(inputs, is_training, args.num_classes)
-    y_pred = net.prediction
-    total_loss = calc_loss(y_true, y_pred)
+if args.ngpu>1:
+    net = torch.nn.DataParallel(net)
+if cfg.train_cfg.cuda:
+    net.cuda()
+    cudnn.benchmark = True
 
-    global_step = tf.Variable(0, name='global_step', trainable=False)
-    train_var = tf.trainable_variables()
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies(update_ops):
-        opt = tf.train.AdamOptimizer(learning_rate=args.learning_rate)
-        grads = tf.gradients(total_loss, train_var)
-        train_op = opt.apply_gradients(zip(grads, train_var), global_step=global_step)
+optimizer = set_optimizer(net, cfg)
+criterion = set_criterion(cfg)
+priorbox = PriorBox(anchors(cfg))
 
-    sess = tf.Session()
-    init_op = tf.global_variables_initializer()
-    sess.run(init_op)
-
-    if tf.train.get_checkpoint_state(args.model_dir):
-        saver = tf.train.Saver()
-        saver.restore(sess, os.path.join(args.model_dir, 'variables'))
-        logger.info('Resuming training')
-
-    while True:
-        x_batch, t_batch = databox.get(args.batch_size)
-        _, loss_value = sess.run([train_op, total_loss], feed_dict={inputs: x_batch, y_true: t_batch})
-        step_value = sess.run(global_step)
-        logger.info('step: {}, loss: {}'.format(step_value, loss_value))
-        if (step_value) % 10000 == 0:
-            saver = tf.train.Saver()
-            dst = os.path.join(args.model_dir, 'variables')
-            saver.save(sess, dst, write_meta_graph=False)
+with torch.no_grad():
+    priors = priorbox.forward()
+    if cfg.train_cfg.cuda:
+        priors = priors.cuda()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--image_dir', required=True)
-    parser.add_argument('--label_dir', required=True)
-    parser.add_argument('--model_dir', default='weights/')
-    parser.add_argument('--log_path', default='weights/out.log')
-    parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--learning_rate', type=float, default=3e-4)
-    parser.add_argument('--num_classes', type=int, default=80)
-    parser.add_argument('--input_size', type=int, default=320)
-    parser.add_argument('--gpu', type=str, default='0')
-    os.environ['CUDA_VISIBLE_DEVICES'] = parser.parse_args().gpu
-    main(parser.parse_args())
+    net.train()
+    epoch = args.resume_epoch
+    print_info('===> Loading Dataset...',['yellow','bold'])
+    dataset = get_dataloader(cfg, args.dataset, 'train_sets')
+    epoch_size = len(dataset) // (cfg.train_cfg.per_batch_size * args.ngpu)
+    max_iter = getattr(cfg.train_cfg.step_lr,args.dataset)[-1] * epoch_size
+    stepvalues = [_*epoch_size for _ in getattr(cfg.train_cfg.step_lr, args.dataset)[:-1]]
+    print_info('===> Training M2Det on ' + args.dataset, ['yellow','bold'])
+    step_index = 0
+    if args.resume_epoch > 0:
+        start_iter = args.resume_epoch * epoch_size
+    else:
+        start_iter = 0
+    for iteration in range(start_iter, max_iter):
+        if iteration % epoch_size == 0:
+            batch_iterator = iter(data.DataLoader(dataset, 
+                                                  cfg.train_cfg.per_batch_size * args.ngpu, 
+                                                  shuffle=True, 
+                                                  num_workers=cfg.train_cfg.num_workers, 
+                                                  collate_fn=detection_collate))
+            if epoch % cfg.model.save_eposhs == 0:
+                save_checkpoint(net, cfg, final=False, datasetname = args.dataset, epoch=epoch)
+            epoch += 1
+        load_t0 = time.time()
+        if iteration in stepvalues:
+            step_index += 1
+        lr = adjust_learning_rate(optimizer, cfg.train_cfg.gamma, epoch, step_index, iteration, epoch_size, cfg)
+        images, targets = next(batch_iterator)
+        if cfg.train_cfg.cuda:
+            images = images.cuda()
+            targets = [anno.cuda() for anno in targets]
+        out = net(images)
+        optimizer.zero_grad()
+        loss_l, loss_c = criterion(out, priors, targets)
+        loss = loss_l + loss_c
+        write_logger({'loc_loss':loss_l.item(),
+                      'conf_loss':loss_c.item(),
+                      'loss':loss.item()},logger,iteration,status=args.tensorboard)
+        loss.backward()
+        optimizer.step()
+        load_t1 = time.time()
+        print_train_log(iteration, cfg.train_cfg.print_epochs,
+                            [time.ctime(),epoch,iteration%epoch_size,epoch_size,iteration,loss_l.item(),loss_c.item(),load_t1-load_t0,lr])
+    save_checkpoint(net, cfg, final=True, datasetname=args.dataset,epoch=-1)
