@@ -57,20 +57,31 @@ def flatten_layer(x):
     return x
 
 def tum(x, is_training, scales):
+#convolution
     branch = [x]
     for i in range(scales - 1):
         without_padding = True if np.min(x.shape[1:3]) <= 3 else False
+        #256x 20,10,5,3,1
         x = conv2d_layer(x, filters=256, kernel_size=3, strides=2, without_padding=without_padding)
         x = tf.nn.relu(batch_norm(x, is_training))
+        #reverse to 1,3,5,10,20,40
         branch.insert(0, x)
+
+#upsample and ele-add
+    #x is 256,1x1,256
     out = [x]
     for i in range(1, scales):
         x = conv2d_layer(x, filters=256, kernel_size=3, strides=1)
         x = tf.nn.relu(batch_norm(x, is_training))
+        #upsample
         x = tf.image.resize_images(x, tf.shape(branch[i])[1:3], method=tf.image.ResizeMethod.BILINEAR)
+        #ele-ise add
         x = x + branch[i]
+        # 1,3,5,10,20,40
         out.append(x)
+        
     for i in range(scales):
         out[i] = conv2d_layer(out[i], filters=128, kernel_size=1, strides=1)
         out[i] = tf.nn.relu(batch_norm(out[i], is_training))
+    #out is 1,3,5,10,20,40
     return out

@@ -33,15 +33,16 @@ class M2Det:
                                                   method=tf.image.ResizeMethod.BILINEAR)
                 base_feature = tf.concat([feature1, feature2], axis=3)
 
-            #FFMv_x, 1~7 and TUM, 0~7
+            #FFMv_2 and TUM, 0~7
             outs = []
             for i in range(self.levels):
-                #FFMv_x
+                #FFMv_2
                 if i == 0:
-                    #????????????not found this convolution in paper
+                    # 1st TUM has no concat, then should mapping from 768 to 256
                     net = conv2d_layer(base_feature, filters=256, kernel_size=1, strides=1)
                     net = tf.nn.relu(batch_norm(net, is_training))
                 else:
+                    #others TUM has concat, then mapping from 768 to 128
                     with tf.variable_scope('FFMv2_{}'.format(i+1)):
                         net = conv2d_layer(base_feature, filters=128, kernel_size=1, strides=1)
                         net = tf.nn.relu(batch_norm(net, is_training))
@@ -50,17 +51,26 @@ class M2Det:
                 #TUM
                 with tf.variable_scope('TUM{}'.format(i+1)):
                     out = tum(net, is_training, self.scales)
+                #out is 1,3,5,10,20,40, but shape is????
                 outs.append(out)
 
             features = []
             with tf.variable_scope('SFAM'):
                 for i in range(self.scales):
                     feature = tf.concat([outs[j][i] for j in range(self.levels)], axis=3)
+                    #feature [1,3,5,10,20,40] [8TUMS]
+                    #--squeeze
                     attention = tf.reduce_mean(feature, axis=[1, 2], keepdims=True)
+                    #--excitation, 2 full-connection
+                    #add a new fuul-connection layer, outputs = activation(inputs * kernel + bias)
+                    #in paper, fc_1 is relu, fc_2 is sigmoid
+                    #demension: 1024/64=r=16
                     attention = tf.layers.dense(inputs=feature, units=64, 
                                                 activation=tf.nn.sigmoid, name='fc1_{}'.format(i+1))
                     attention = tf.layers.dense(inputs=attention, units=1024,
                                                 activation=tf.nn.relu, name='fc2_{}'.format(i+1))
+
+                    #--scale
                     feature = feature * attention
                     features.insert(0, feature)
 
@@ -72,11 +82,15 @@ class M2Det:
                     cls = conv2d_layer(feature, self.num_priors * self.num_classes, 3, 1, use_bias=True)
                     cls = batch_norm(cls, is_training) # activation function is identity
                     cls = flatten_layer(cls)
+                    
                     all_cls.append(cls)
+                    
                     reg = conv2d_layer(feature, self.num_priors * 4, 3, 1, use_bias=True)
                     reg = batch_norm(reg, is_training) # activation function is identity
                     reg = flatten_layer(reg)
                     all_reg.append(reg)
+
+                    
                 all_cls = tf.concat(all_cls, axis=1)
                 all_reg = tf.concat(all_reg, axis=1)
                 num_boxes = int(all_reg.shape[-1].value / 4)
