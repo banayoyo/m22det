@@ -317,7 +317,7 @@ def draw_detection(im, bboxes, scores, cls_inds, colors, labels, thr=0.2):
             continue
         cls_indx = int(cls_inds[i])
         box = [int(_) for _ in box]
-        thick = int((h + w) / 600)
+        thick = int((h + w) / 400)
         cv2.rectangle(imgcv,
                       (box[0], box[1]), (box[2], box[3]),
                       colors[cls_indx], thick)
