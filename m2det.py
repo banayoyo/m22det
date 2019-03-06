@@ -60,6 +60,7 @@ class M2Det(nn.Module):
                             is_smooth=self.smooth, 
                             scales=self.num_scales,
                             side_channel=self.planes))
+                            
         # construct base features
         if 'vgg' in self.net_family:
             self.base = nn.ModuleList(get_backbone(self.backbone))
@@ -69,6 +70,7 @@ class M2Det(nn.Module):
             self.base = get_backbone(self.backbone)
             shallow_in, shallow_out = 512,256
             deep_in, deep_out = 2048,512
+
         self.reduce= BasicConv(shallow_in, shallow_out, kernel_size=3, stride=1, padding=1)
         self.up_reduce= BasicConv(deep_in, deep_out, kernel_size=1, stride=1)
         
@@ -79,7 +81,8 @@ class M2Det(nn.Module):
         self.leach = nn.ModuleList([BasicConv(
                     deep_out+shallow_out,
                     self.planes//2,
-                    kernel_size=(1,1),stride=(1,1))]*self.num_levels)
+                    kernel_size=(1,1),
+                    stride=(1,1))]*self.num_levels)
 
         # construct localization and recognition layers
         loc_ = list()
@@ -91,6 +94,9 @@ class M2Det(nn.Module):
             conf_.append(nn.Conv2d(self.planes*self.num_levels,
                                        self.num_classes * 6, #6 is anchors for each pixels,
                                        3, 1, 1))
+
+        #ModuleList, tansfer from python.list into pytorch.list
+        #ModuleList can include several Module
         self.loc = nn.ModuleList(loc_)
         self.conf = nn.ModuleList(conf_)
 
@@ -101,6 +107,7 @@ class M2Det(nn.Module):
     def forward(self,x):
         loc,conf = list(),list()
         base_feats = list()
+        
         if 'vgg' in self.net_family:
             for k in range(len(self.base)):
                 x = self.base[k](x)
@@ -129,7 +136,11 @@ class M2Det(nn.Module):
         sources[0] = self.Norm(sources[0])
         
         for (x,l,c) in zip(sources, self.loc, self.conf):
-            loc.append(l(x).permute(0, 2, 3, 1).contiguous())
+            #permute, exchange the matrix' demension
+            #reset the memory to continous after permute
+            #https://blog.csdn.net/appleml/article/details/80143212
+            
+            loc.append( l(x).permute(0, 2, 3, 1).contiguous() )
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)

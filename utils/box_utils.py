@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import math
 import numpy as np
+import cv2
+
 if torch.cuda.is_available():
     import torch.backends.cudnn as cudnn
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -296,3 +298,32 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
         # keep only elements with an IoU <= overlap
         idx = idx[IoU.le(overlap)]
     return keep, count
+
+
+def _to_color(indx, base):
+    """ return (b, r, g) tuple"""
+    base2 = base * base
+    b = 3 - indx / base2
+    r = 3 - (indx % base2) / base
+    g = 3 - (indx % base2) % base
+    return b * 127, r * 127, g * 127
+
+
+def draw_detection(im, bboxes, scores, cls_inds, colors, labels, thr=0.2):
+    imgcv = np.copy(im)
+    h, w, _ = imgcv.shape
+    for i, box in enumerate(bboxes):
+        if scores[i] < thr:
+            continue
+        cls_indx = int(cls_inds[i])
+        box = [int(_) for _ in box]
+        thick = int((h + w) / 600)
+        cv2.rectangle(imgcv,
+                      (box[0], box[1]), (box[2], box[3]),
+                      colors[cls_indx], thick)
+        mess = '%s: %.3f' % (labels[cls_indx], scores[i])
+        cv2.putText(imgcv, mess, (box[0], box[1] - 7),
+                    0, 1e-3 * h, colors[cls_indx], thick // 3)
+
+    return imgcv
+

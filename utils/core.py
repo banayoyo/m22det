@@ -39,7 +39,8 @@ def init_net(net, cfg, resume_net):
         net.init_model(cfg.model.pretrained)
     else:
         print('Loading resume network...')
-        state_dict = torch.load(resume_net)
+        #state_dict = torch.load(resume_net)
+        state_dict = torch.load(resume_net,map_location='cpu')
 
         from collections import OrderedDict
         new_state_dict = OrderedDict()

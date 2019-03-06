@@ -82,11 +82,13 @@ if __name__ == '__main__':
     net.eval()
     _set = 'eval_sets' if not args.test else 'test_sets'
     testset = get_dataloader(cfg, args.dataset, _set)
+    
     if cfg.test_cfg.cuda:
         net = net.cuda()
         cudnn.benchmark = True
     else:
         net = net.cpu()
+        
     detector = Detect(cfg.model.m2det_config.num_classes, cfg.loss.bkg_label, anchor_config)
     save_folder = os.path.join(cfg.test_cfg.save_folder, args.dataset)
     _preprocess = BaseTransform(cfg.model.input_size, cfg.model.rgb_means, (2, 0, 1))
