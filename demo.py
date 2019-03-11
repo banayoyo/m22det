@@ -12,6 +12,7 @@ from data import BaseTransform
 from utils.core import *
 from utils.pycocotools.coco import COCO
 from utils.box_utils import _to_color, draw_detection
+from torchsummary import summary
 
 parser = argparse.ArgumentParser(description='M2Det Testing')
 parser.add_argument('-c', '--config', default='configs/m2det320_vgg.py', type=str)
@@ -76,6 +77,15 @@ for i, fname in enumerate(im_fnames):
 
     #M2Det body
     out = net(img)
+    #out[0].size()= torch.Size([1, 32760, 4]) --> boxes
+    #out[1].size()= torch.Size([32760, 81])   --> scores
+    #out[2] out of index
+
+#    #https://www.jianshu.com/p/2cb1a4d25b4f\
+#    #memory limitied, not ok for running
+#    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
+#    model = net.to(device)
+#    summary(model, (3, 512, 512))
 
     #box
     boxes, scores = detector.forward(out, priors)

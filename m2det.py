@@ -22,6 +22,7 @@ import os,sys,time
 from layers.nn_utils import *
 from torch.nn import init as init
 from utils.core import print_info
+from torchsummary import summary
 
 class M2Det(nn.Module):
     def __init__(self, phase, size, config = None):
@@ -63,6 +64,7 @@ class M2Det(nn.Module):
                             
         # construct base features
         if 'vgg' in self.net_family:
+        #self.backbone is values from config file
             self.base = nn.ModuleList(get_backbone(self.backbone))
             shallow_in, shallow_out = 512,256
             deep_in, deep_out = 1024,512
@@ -107,26 +109,34 @@ class M2Det(nn.Module):
     def forward(self,x):
         loc,conf = list(),list()
         base_feats = list()
-        
+
+        #resnet-101
         if 'vgg' in self.net_family:
             for k in range(len(self.base)):
                 x = self.base[k](x)
                 if k in self.base_out:
                     base_feats.append(x)
         elif 'res' in self.net_family:
+        #self.base_out in config file
             base_feats = self.base(x, self.base_out)
+
+        #FFMv1
         base_feature = torch.cat(
-                (self.reduce(base_feats[0]), F.interpolate(self.up_reduce(base_feats[1]),scale_factor=2,mode='nearest')),1
+                (self.reduce(base_feats[0]), F.interpolate(self.up_reduce(base_feats[1]),scale_factor=2,mode='nearest')),
+                 1
                 )
 
-        # tum_outs is the multi-level multi-scale feature
+        # TUM
+        #its outs is the multi-level multi-scale feature
+
+        #http://www.runoob.com/python/python-func-getattr.html
+        #getattr: return the value of member=<'unet{}'.format(1)> in <self>, seem like callback-function in C++
         tum_outs = [getattr(self, 'unet{}'.format(1))(self.leach[0](base_feature), 'none')]
         for i in range(1,self.num_levels,1):
             tum_outs.append(
-                    getattr(self, 'unet{}'.format(i+1))(
-                        self.leach[i](base_feature), tum_outs[i-1][-1]
-                        )
-                    )
+                            getattr(self, 'unet{}'.format(i+1))(self.leach[i](base_feature), tum_outs[i-1][-1])
+                            )
+
         # concat with same scales
         sources = [torch.cat([_fx[i-1] for _fx in tum_outs],1) for i in range(self.num_scales, 0, -1)]
         

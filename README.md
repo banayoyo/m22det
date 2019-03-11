@@ -112,7 +112,10 @@ First, download the pretrained m2det512_vgg.pth([baidu cloud](https://pan.baidu.
 
 ```Shell
   python demo.py -c=configs/m2det512_vgg.py -m=weights/m2det512_vgg.pth --show
+
   python demo.py -c=configs/m2det512_vgg.py -m=../data_file/m2det_weights/m2det512_vgg.pth --show
+
+runfile('C:/Users/admin/Desktop/Git_Repo/TF/m2det/demo.py', args='-c configs/m2det512_vgg.py --show -m ../data_file/m2det_weights/m2det512_vgg.pth', wdir='C:/Users/admin/Desktop/Git_Repo/TF/m2det')
 ```
 You can see the image with drawed boxes as:
 
